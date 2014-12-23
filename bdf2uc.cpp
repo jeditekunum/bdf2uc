@@ -1,6 +1,6 @@
 /**
  * @file bdf2uc.cpp
- * @version 1.0
+ * @version 1.1
  *
  * @section License
  * Copyright (C) 2014, jediunix
@@ -17,7 +17,7 @@
  * 
  */
 
-#define VERSION "1.0"
+#define VERSION "1.1"
 #define AUTHOR "jediunix"
 #define SOURCE "https://github.com/jediunix/bdf2uc"
 
@@ -224,7 +224,7 @@ generate_glyph(std::ofstream& out, Bdf& bdf, Glyph::encoding_t i)
 }
 
 void
-generate(std::ofstream& out, Bdf& bdf, Glyph::encoding_t first, Glyph::encoding_t last)
+generate(std::ofstream& out, Bdf& bdf, std::string class_name, Glyph::encoding_t first, Glyph::encoding_t last)
 {
   int expected_total = (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1);
 
@@ -235,29 +235,48 @@ generate(std::ofstream& out, Bdf& bdf, Glyph::encoding_t first, Glyph::encoding_
 
   generate_hdr(out, bdf);
 
-  out << "/*"
-      << " width=" << bdf.bb_width()
-      << " height=" << bdf.bb_height()
-      << " first=0x" << std::hex << first << std::dec
-      << " last=0x" << std::hex << last << std::dec
-      << " glyph_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height()))
-      << " total_size=" << expected_total
-      << " */"
-      << std::endl;
-
-  out << bdf.bb_width() << ",";
-  out << bdf.bb_height() << ",";
-  out << first << ",";
-  out << last << ",";
-  out << std::endl;
+  out << "/* encoding format is 8 rows at a time (byte) sweeping across columns */" << std::endl;
   out << std::endl;
 
-  out << "/* encoding format is 8 rows at a time (byte) sweeping across columns */";
+  if (!class_name.length())
+    {
+      out << "/*"
+          << " width=" << bdf.bb_width()
+          << " height=" << bdf.bb_height()
+          << " first=0x" << std::hex << first << std::dec
+          << " last=0x" << std::hex << last << std::dec
+          << " glyph_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height()))
+          << " total_size=" << expected_total
+          << " */"
+          << std::endl;
 
-  out << std::endl;
+      out << bdf.bb_width() << ",";
+      out << bdf.bb_height() << ",";
+      out << first << ",";
+      out << last << ",";
+      out << std::endl;
+    }
+  else
+    {
+      out << "const uint8_t " << class_name << "::width = " << bdf.bb_width() << ";" << std::endl;
+      out << "const uint8_t " << class_name << "::height = " << bdf.bb_height() << ";" << std::endl;
+      out << "const uint8_t " << class_name << "::first = 0x" << std::hex << first << std:: dec << ";" << std::endl;
+      out << "const uint8_t " << class_name << "::last = 0x" << std::hex << last << std::dec << ";" << std::endl;
+      out << std::endl;
+      out << "/* glyph_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height()))
+          << " total_size=" << expected_total
+          << " */"
+          << std::endl;
+      out << std::endl;
+
+      out << "const uint8_t " << class_name << "::bitmap[] __PROGMEM = {" << std::endl;
+    }
 
   for (Glyph::encoding_t i = first; i <= last; i++)
     generate_glyph(out, bdf, i);
+
+  if (class_name.length())
+    out << "};" << std::endl;
 
 #ifdef ENABLE_COMPRESSION
   if (compress)
@@ -277,11 +296,12 @@ main(int argc, char *const argv[])
   Glyph::encoding_t last = 255;
   std::string bdf_name;
   std::string out_name;
+  std::string class_name = "";
   std::ofstream out;
 
 
   for (;;) {
-    switch (getopt(argc, argv, "f:l:ch?-")) {
+    switch (getopt(argc, argv, "f:l:n:ch?-")) {
     case 'f':
       if (optarg[0] == '0' &&
           (optarg[1] == 'x' || optarg[1] == 'X'))
@@ -312,6 +332,15 @@ main(int argc, char *const argv[])
         }
       continue;
 
+    case 'n':
+      if (optind == argc)
+        {
+          std::cerr << "No class name provided" << std::endl;
+          exit(-1);
+        }
+      class_name = optarg;
+      continue;
+
     case 'c':
 #ifdef ENABLE_COMPRESSION
       compress = true;
@@ -328,6 +357,7 @@ main(int argc, char *const argv[])
       std::cout << "bdf2uc [option]... {bdf-input-file} {output-path-name}" << std::endl << std::endl;
       std::cout << "-f {first}          - {first} is character or hex (0xXX)" << std::endl;
       std::cout << "-l {last}           - {last} is character or hex (0xXX)" << std::endl;
+      std::cout << "-n {name}           - will package for Cosa using class {name}" << std::endl;
 #ifdef ENABLE_COMPRESSION
       std::cout << "-c                  - compress" << std::endl;
 #endif
@@ -395,7 +425,7 @@ main(int argc, char *const argv[])
   bdf.read(input);
   input.close();
 
-  generate(out, bdf, first, last);
+  generate(out, bdf, class_name, first, last);
 
   out.close();
 

@@ -152,8 +152,7 @@ public:
   }
 
 protected:
-  //  static const unsigned int MAX_ENCODINGS = 256;
-  static const unsigned int MAX_ENCODINGS = 100000;
+  static const unsigned int MAX_ENCODINGS = 256;
 
   static const unsigned int FONT_LEN = 96;
   static const unsigned int FOUNDRY_LEN = 16;
