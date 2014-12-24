@@ -30,7 +30,7 @@ int main()
 
   printf("FONT %s\n", "GENERATED");
   printf("FONTBOUNDINGBOX %d %d 0 0\n", WIDTH, HEIGHT);
-  printf("FOUNDRY \"\%s\"\n", "UNKNOWN");
+  printf("FOUNDRY \"%s\"\n", "UNKNOWN");
   printf("FAMILY_NAME \"%s\"\n", "UNKNOWN");
   printf("WEIGHT_NAME \"%s\"\n", "UNKNOWN");
   printf("SLANT \"%s\"\n", "R");
