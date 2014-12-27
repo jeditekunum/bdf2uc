@@ -1,6 +1,6 @@
 /**
  * @file bdf2uc.cpp
- * @version 1.1
+ * @version 1.2
  *
  * @section License
  * Copyright (C) 2014, jediunix
@@ -17,7 +17,7 @@
  * 
  */
 
-#define VERSION "1.1"
+#define VERSION "1.2"
 #define AUTHOR "jediunix"
 #define SOURCE "https://github.com/jediunix/bdf2uc"
 

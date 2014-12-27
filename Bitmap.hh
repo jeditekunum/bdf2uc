@@ -67,7 +67,6 @@ public:
       {
         m_bytes = new byte_t [size];
         memset(m_bytes, 0, sizeof(*m_bytes) * size);
-        m_count = size;
       }
   }
 
