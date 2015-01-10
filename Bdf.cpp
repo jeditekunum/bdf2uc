@@ -17,6 +17,8 @@
  * 
  */
 
+#include <stdlib.h>
+
 #include "Bdf.hh"
 
 #define STRSEP "\"\n"

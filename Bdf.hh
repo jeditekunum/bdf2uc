@@ -47,7 +47,7 @@ public:
 
   Bdf()
   {
-    for (int i = 0; i< MAX_ENCODINGS; i++)
+    for (unsigned int i = 0; i< MAX_ENCODINGS; i++)
       m_encodings[i] = INVALID_ENCODING;
     m_COMMENTS = "";
   }

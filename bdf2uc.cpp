@@ -17,11 +17,13 @@
  * 
  */
 
-#define VERSION "1.2"
+#define VERSION "1.3"
 #define AUTHOR "jediunix"
 #define SOURCE "https://github.com/jediunix/bdf2uc"
 
 #include <unistd.h>
+#include <stdlib.h>
+#include <errno.h>
 #include <iostream>
 #include <fstream>
 
@@ -224,7 +226,7 @@ generate_glyph(std::ofstream& out, Bdf& bdf, Glyph::encoding_t i)
 }
 
 void
-generate(std::ofstream& out, Bdf& bdf, std::string class_name, Glyph::encoding_t first, Glyph::encoding_t last)
+generate(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t first, Glyph::encoding_t last)
 {
   int expected_total = (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1);
 
@@ -238,7 +240,7 @@ generate(std::ofstream& out, Bdf& bdf, std::string class_name, Glyph::encoding_t
   out << "/* encoding format is 8 rows at a time (byte) sweeping across columns */" << std::endl;
   out << std::endl;
 
-  if (!class_name.length())
+  if (!class_name)
     {
       out << "/*"
           << " width=" << bdf.bb_width()
@@ -275,7 +277,7 @@ generate(std::ofstream& out, Bdf& bdf, std::string class_name, Glyph::encoding_t
   for (Glyph::encoding_t i = first; i <= last; i++)
     generate_glyph(out, bdf, i);
 
-  if (class_name.length())
+  if (class_name)
     out << "};" << std::endl;
 
 #ifdef ENABLE_COMPRESSION
@@ -294,9 +296,9 @@ main(int argc, char *const argv[])
 {
   Glyph::encoding_t first = 0;
   Glyph::encoding_t last = 255;
-  std::string bdf_name;
-  std::string out_name;
-  std::string class_name = "";
+  char * bdf_name;
+  char *out_name;
+  char *class_name = NULL;
   std::ofstream out;
 
 
@@ -386,10 +388,7 @@ main(int argc, char *const argv[])
   bdf_name = argv[optind++];
 
   if (optind == argc)
-    {
-      out_name = "stdout";
-      out.open("/dev/stdout");
-    }
+    out.open("/dev/stdout");
   else
     {
       out_name = argv[optind++];
@@ -415,7 +414,7 @@ main(int argc, char *const argv[])
     }
 
   std::ifstream input;
-  input.open(bdf_name, std::ifstream::in);
+  input.open(bdf_name);
   if (!input.is_open())
     {
       std::cerr << "Can't open input file '" << bdf_name << "' "
