@@ -23,7 +23,7 @@ SRCS=bdf2uc.cpp Bdf.cpp Glyph.cpp
 OBJS=$(SRCS:.cpp=.o)
 EXEC=bdf2uc
 
-HDRS	=	Bdf.hh Glyphs.hh Glyph.hh
+HDRS	=	Bdf.hh Glyphs.hh Glyph.hh Bitmap.hh
 FILES	=	Makefile
 
 all: $(SRCS) $(EXEC)

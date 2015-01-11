@@ -17,6 +17,7 @@
  * 
  */
 
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "Bdf.hh"
@@ -227,8 +228,6 @@ Bdf::read(std::ifstream& input)
             if (m_glyphs.glyph(glyph_count).x_offset() + m_glyphs.glyph(glyph_count).width() > m_bb_width)
               m_bb_width = m_glyphs.glyph(glyph_count).x_offset() + m_glyphs.glyph(glyph_count).width();
 
-            m_glyphs.glyph(glyph_count).bitmap(&m_bitmap, m_bitmap.count());
-
             in_bitmap = 1;
           }
         else if (!strcasecmp(s, "ENDCHAR"))
@@ -244,7 +243,7 @@ Bdf::read(std::ifstream& input)
         else if (in_bitmap)
           {
             char *p = s;
-            unsigned char i;
+            Bitmap::byte_t i;
 
             s[BITS_TO_BYTES(m_bb_width)*2] = 0;  // clamp
 
@@ -252,7 +251,7 @@ Bdf::read(std::ifstream& input)
               i = hexi(*(p++));
               if (*p)
                 i = (i << 4) | hexi(*(p++));
-              m_bitmap.append(i);
+              m_glyphs.glyph(glyph_count).append_input_byte(i);
             }
 
             bitmap_line++;

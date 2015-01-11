@@ -29,17 +29,23 @@
 
 #include "Bdf.hh"
 
-//#define ENABLE_COMPRESSION // experimental
-
 Bdf bdf;
 
-#ifdef ENABLE_COMPRESSION
+bool verbose = false;
 bool compress = false;
-#endif
 
+unsigned int total_converted = 0;
+unsigned int total_compressed = 0;
+
+
+int
+percent(int l, int r)
+{
+  return ((int)(((l - r) / (float)r) * 100.0));
+}
 
 void
-generate_hdr(std::ofstream& out, Bdf& bdf)
+output_hdr(std::ofstream& out, Bdf& bdf)
 {
   out << "/* BDF " << std::endl;
   
@@ -84,39 +90,15 @@ generate_hdr(std::ofstream& out, Bdf& bdf)
 
 }
 
-
-static unsigned int out_offset = 0;
-
 void
-generate_glyph(std::ofstream& out, Bdf& bdf, Glyph::encoding_t i)
+convert_glyph(Bdf& bdf, Glyph::encoding_t i)
 {
-  Bitmap::byte_t bytes[bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())];
-  unsigned int byte_count = 0;
-
-  out << std::endl;
-  out << "/* ";
-  if (isprint(i))
-    out << "'" << (char)i << "' ";
-  out << "(" << i << ", 0x" << std::hex << i << std::dec << ")";
+  if (bdf.glyph(i).converted_count())
+    return;  // must be invalid glyph
 
   if(bdf.glyph(i).valid())
     {
-      Bitmap::index_t bi_begin = bdf.glyph(i).bitmap_index();
-
-      out << " offset " << out_offset << " */" << std::endl;
-
-      bdf.glyph(i).print(out, "/* ", " */");
-
-      // Cosa native font
-      //      for (unsigned int x = 0; x < bdf.bb_width(); x++)
-      //        {
-      //          //              out << "x=" << x << std::endl;
-      //
-      //          for (unsigned int yb = 0; yb < BITS_TO_BYTES(bdf.bb_height()); yb++)
-      //            {
-      //              //                out << " yb=" << yb << std::endl;
-
-      // Cosa GLCDFont
+      // Cosa Font
       for (unsigned int yb = 0; yb < BITS_TO_BYTES(bdf.bb_height()); yb++)
         {
           //          out << "yb=" << yb << std::endl;
@@ -135,107 +117,162 @@ generate_glyph(std::ofstream& out, Bdf& bdf, Glyph::encoding_t i)
                 {
                   //                  out << "  bit=" << bit;
 
-                  uint16_t in_offset =
+                  unsigned short in_offset =
                     yb * (BITS_TO_BYTES(bdf.bb_width()) * 8) +
                     BITS_TO_BYTES(x+1) - 1 +
                     bit * BITS_TO_BYTES(bdf.bb_width());
                   //                  out << " in_offset=" << in_offset;
 
-                  uint16_t right_shift = 7 - x % 8;
+                  unsigned short right_shift = 7 - x % 8;
                   //                  out << " rs=" << right_shift;
 
-                  uint8_t data = bdf.bitmap().byte(bi_begin + in_offset);
+                  
+                  Bitmap::byte_t data = bdf.glyph(i).input_byte(in_offset);
                   //                  out << " data=0x" << std::hex << (uint16_t)data << std::dec
                   //                      << " (0b" << (std::bitset<8>)data << ")";
 
                   byte |= ((data >> right_shift) & 0x1) << bit;
                   //                  out << " byte=0b" << (std::bitset<8>)byte << std::endl;
                 }
-              bytes[byte_count++] = byte;
+              bdf.glyph(i).append_converted_byte(byte);
             }
         }
     }
   else
     {
-      out << " offset " << out_offset << ", is not present in BDF; blank glyph generated */" << std::endl;
+      if (verbose)
+        std::cerr << "WARNING: Missing glyph for " << "0x" << std::hex << (i>>4) << (i&0xF) << std::dec << std::endl;
 
-      for (byte_count=0; byte_count<sizeof(bytes); byte_count++)
-        bytes[byte_count] = 0;
-
-      std::cerr << "WARNING: Missing glyph for " << "0x" << std::hex << (i>>4) << (i&0xF) << std::dec << std::endl;
+      unsigned int amount = bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height());
+      for (unsigned int j=0; j<amount; j++)
+        bdf.glyph(i).append_converted_byte(0);
     }
+  total_converted += bdf.glyph(i).converted_count();
+}
 
-#ifdef ENABLE_COMPRESSION
+void
+compress_glyph(Bdf& bdf, Glyph::encoding_t i)
+{
+  if (!compress)
+    return;
+
+  if (bdf.glyph(i).compressed_count())
+    return;  // must be invalid glyph
+
 #if 0
-  if (compress)
-    {
-      // Pre-compression
+  // Pre-compression
 
-      std::cerr << "pre ";
-      for (unsigned int i=0; i<byte_count; i++)
-        std::cerr << "0x" << std::hex << (bytes[i]>>4) << (bytes[i] & 0xF) << std::dec << ",";
-      std::cerr << std::endl;
-    }
-#endif
+  std::cerr << "pre ";
+  for (unsigned int j=0; j<bdf.glyph(i).converted_count(); j++)
+    std::cerr << "0x"
+              << std::hex << (bdf.glyph(i).converted_byte(j)>>4)
+              << (bdf.glyph(i).converted_byte(j) & 0xF)
+              << std::dec << ",";
+  std::cerr << std::endl;
 #endif
 
   unsigned int scan = 0;
 
-  while (scan < byte_count)
+  while (scan < bdf.glyph(i).converted_count())
     {
-      out << "0x" << std::hex << (bytes[scan]>>4) << (bytes[scan] & 0xF) << std::dec << ",";
-      out_offset++;
-
-#ifdef ENABLE_COMPRESSION
-      if (compress && bytes[scan] == 0)
+      if (bdf.glyph(i).converted_byte(scan) == 0)
         {
           unsigned int compressor = 0;
 
-          while (scan < byte_count && bytes[scan] == 0 && compressor < 256)
+          while (scan < bdf.glyph(i).converted_count() &&
+                 bdf.glyph(i).converted_byte(scan) == 0 &&
+                 compressor < 256)
             {
-              //              std::cerr << " [" << scan << "]#" << compressor << std::endl;
               compressor++;
               scan++;
             }
 
-          if (compressor)
-            {
-              compressor--;
+          assert(compressor);
 
-              out << compressor << ",";
-              out_offset++;
-            }
+          bdf.glyph(i).append_compressed_byte(0);
+          compressor--;
+          bdf.glyph(i).append_compressed_byte(compressor);
         }
       else
-#endif
-        scan++;
+        {
+          bdf.glyph(i).append_compressed_byte(bdf.glyph(i).converted_byte(scan));
+          scan++;
+        }
     }
-  out << std::endl;
+  total_compressed += bdf.glyph(i).compressed_count();
+}
 
-#ifdef ENABLE_COMPRESSION
-#if 0
-  if (compress)
+static unsigned int out_offset = 0;
+
+void
+output_glyph(std::ofstream& out, Bdf& bdf, Glyph::encoding_t i)
+{
+  out << "/* ";
+  if (isprint(i))
+    out << "'" << (char)i << "' ";
+  else
     {
-      int expected = bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height());
-      int got = ((int)out_offset - begin_offset);
-
-      std::cerr << (int)(((got - expected ) / (float)expected) * 100.0) << "%" << std::endl;
+      out << "'\\";
+      if (i < 8)
+        out << "0";
+      if (i < 64)
+        out << "0";
+      out << std::oct << (int)i <<  "' " << std::dec;
     }
-#endif
-#endif
+  out << "(" << i << ", 0x" << std::hex << i << std::dec << ")";
+  out << " offset=" << out_offset;
+  out << " length=";
+  if (compress)
+    out << bdf.glyph(i).compressed_count();
+  else
+    out << bdf.glyph(i).converted_count();
+
+  if (compress)
+    out << " compressed="
+        << -percent(bdf.glyph(i).compressed_count(), bdf.glyph(i).converted_count())
+        << "%";
+
+  out << " */" << std::endl;
+
+  if(bdf.glyph(i).valid())
+    bdf.glyph(i).print(out, "/* ", " */");
+  else
+    out << "/* not present in BDF; blank glyph generated */" << std::endl;
+
+  unsigned int number;
+  if (compress)
+    number = bdf.glyph(i).compressed_count();
+  else
+    number = bdf.glyph(i).converted_count();
+        
+  for (unsigned int j=0; j<number; j++)
+    {
+      unsigned int byte;
+      if (compress)
+        byte = bdf.glyph(i).compressed_byte(j);
+      else
+        byte = bdf.glyph(i).converted_byte(j);
+
+      out << "0x" << std::hex;
+      if (byte < 16)
+        out << "0";
+      out << byte;
+      out << std::dec << ",";
+      out_offset++;
+    }
+
+  out << std::endl;
 }
 
 void
 generate(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t first, Glyph::encoding_t last)
 {
-  int expected_total = (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1);
-
   out << "/* Generated by bdf2uc " << VERSION
       << " " << AUTHOR
       << " " << SOURCE
       << " */" << std::endl;
 
-  generate_hdr(out, bdf);
+  output_hdr(out, bdf);
 
   out << "/* encoding format is 8 rows at a time (byte) sweeping across columns */" << std::endl;
   out << std::endl;
@@ -248,7 +285,7 @@ generate(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t first
           << " first=0x" << std::hex << first << std::dec
           << " last=0x" << std::hex << last << std::dec
           << " glyph_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height()))
-          << " total_size=" << expected_total
+          << " bitmap_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1)
           << " */"
           << std::endl;
 
@@ -264,31 +301,53 @@ generate(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t first
       out << "const uint8_t " << class_name << "::height = " << bdf.bb_height() << ";" << std::endl;
       out << "const uint8_t " << class_name << "::first = 0x" << std::hex << first << std:: dec << ";" << std::endl;
       out << "const uint8_t " << class_name << "::last = 0x" << std::hex << last << std::dec << ";" << std::endl;
+      if (compress)
+        out << "const uint8_t " << class_name << "::compression_type = "
+            << compress << ";" << std::endl;
       out << std::endl;
-      out << "/* glyph_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height()))
-          << " total_size=" << expected_total
-          << " */"
-          << std::endl;
+
+      out << "/* glyph_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) << " */" << std::endl;
+      if (compress)
+        {
+          out << "/* uncompressed_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1) << " */" << std::endl;
+          out << "/* lookup_size=" << (2*(last-first+1)) << " */" << std::endl;
+          out << "/* bitmap_size=" << total_compressed << " */" << std::endl;
+          out << "/* lookup_size+bitmap_size=" << (total_compressed + (2*(last-first+1))) << " */" << std::endl;
+          out << "/* compression saved " << -percent(total_compressed+(2*(last-first+1)), total_converted) << "% */" << std::endl;
+        }
+      else
+        out << "/* bitmap_size=" << total_converted << " */" << std::endl;
+
       out << std::endl;
+
+      if (compress)
+        {
+          // Output lookup table
+          unsigned int offset = 0;
+
+          out << "const uint16_t " << class_name << "::lookup[] __PROGMEM = {" << std::endl;
+
+          for (Glyph::encoding_t i = first; i <= last; i++)
+            {
+              out << offset << ",";
+              offset += bdf.glyph(i).compressed_count();
+            }
+
+          out << std::endl << "};" << std::endl;
+          out << std::endl;
+        }
 
       out << "const uint8_t " << class_name << "::bitmap[] __PROGMEM = {" << std::endl;
     }
 
   for (Glyph::encoding_t i = first; i <= last; i++)
-    generate_glyph(out, bdf, i);
+    {
+      output_glyph(out, bdf, i);
+      out << std::endl;
+    }
 
   if (class_name)
     out << "};" << std::endl;
-
-#ifdef ENABLE_COMPRESSION
-  if (compress)
-    {
-      out << "/* compression "
-          << (int)((((int)out_offset - expected_total) / (float) expected_total) * 100.0) << "%,"
-          << " with lookup table "
-          << (int)(((((int)out_offset + 128) - expected_total) / (float) expected_total) * 100.0) << "% */" << std::endl;
-    }
-#endif
 }
 
 int
@@ -303,7 +362,7 @@ main(int argc, char *const argv[])
 
 
   for (;;) {
-    switch (getopt(argc, argv, "f:l:n:ch?-")) {
+    switch (getopt(argc, argv, "f:l:n:vch?-")) {
     case 'f':
       if (optarg[0] == '0' &&
           (optarg[1] == 'x' || optarg[1] == 'X'))
@@ -343,12 +402,12 @@ main(int argc, char *const argv[])
       class_name = optarg;
       continue;
 
+    case 'v':
+      verbose = true;
+      continue;
+
     case 'c':
-#ifdef ENABLE_COMPRESSION
       compress = true;
-#else
-      std::cerr << "Warning: compression is disabled" << std::endl;
-#endif
       continue;
 
     case EOF:
@@ -360,9 +419,8 @@ main(int argc, char *const argv[])
       std::cout << "-f {first}          - {first} is character or hex (0xXX)" << std::endl;
       std::cout << "-l {last}           - {last} is character or hex (0xXX)" << std::endl;
       std::cout << "-n {name}           - will package for Cosa using class {name}" << std::endl;
-#ifdef ENABLE_COMPRESSION
       std::cout << "-c                  - compress" << std::endl;
-#endif
+      std::cout << "-v                  - verbose" << std::endl;
       exit(0);
 
     case '-':
@@ -380,12 +438,21 @@ main(int argc, char *const argv[])
 
     break;
   }
+
+  // Check arguments
+
   if (optind == argc)
     {
       std::cerr << "No bdf file provided" << std::endl;
       exit(-1);
     }
   bdf_name = argv[optind++];
+
+  if (!class_name && compress)
+    {
+      std::cerr << "WARNING: without name (-n) compression is disabled" << std::endl;
+      compress = false;
+    }
 
   if (optind == argc)
     out.open("/dev/stdout");
@@ -413,6 +480,8 @@ main(int argc, char *const argv[])
       last = t;
     }
 
+  // Read in BDF
+
   std::ifstream input;
   input.open(bdf_name);
   if (!input.is_open())
@@ -423,6 +492,74 @@ main(int argc, char *const argv[])
     }
   bdf.read(input);
   input.close();
+
+  // Convert
+  for (Glyph::encoding_t i = first; i <= last; i++)
+    convert_glyph(bdf, i);
+
+  // Compress
+  if (compress)
+    for (Glyph::encoding_t i = first; i <= last; i++)
+      compress_glyph(bdf, i);
+ 
+  // Verbose reporting
+
+  if (verbose)
+    for (Glyph::encoding_t i = first; i <= last; i++)
+      {
+        if (isprint(i))
+          std::cerr << "'" << (char)i << "' ";
+        else
+          {
+            std::cerr << "'\\";
+            if (i < 8)
+              std::cerr << "0";
+            if (i < 64)
+              std::cerr << "0";
+            std::cerr << std::oct << (int)i <<  "' " << std::dec;
+          }
+        std::cerr << "(" << i << ", 0x" << std::hex << i << std::dec << ") ";
+
+        if (compress)
+        {
+          if (bdf.glyph(i).converted_count() < bdf.glyph(i).compressed_count())
+            std::cerr << " *** GREW ***"
+                      << percent(bdf.glyph(i).compressed_count(), bdf.glyph(i).converted_count()) << "%";
+          if (bdf.glyph(i).converted_count() > bdf.glyph(i).compressed_count())
+            std::cerr << percent(bdf.glyph(i).converted_count(), bdf.glyph(i).compressed_count()) << "%";
+        }
+        std::cerr << std::endl;
+      }
+
+  // Decide if we are keeping compression
+
+  if (compress)
+    {
+      // Compressing means we need a lookup table too
+      unsigned int lookup_size = 2*(last-first+1);
+      
+      if (class_name)
+        std::cerr << class_name << " ";
+      std::cerr << "overall compression (with lookup table): ";
+      if (total_converted < (total_compressed + lookup_size))
+        {
+          std::cerr << " *** GREW *** "
+                    << -percent(total_compressed + lookup_size, total_converted)
+                    << "%, cancelling compression";
+          compress = false;
+        }
+      if (total_converted > (total_compressed + lookup_size))
+        std::cerr << -percent(total_compressed + lookup_size, total_converted)
+                  << "%";
+      if (total_converted == (total_compressed + lookup_size))
+        {
+          std::cerr << "0%, cancelling compression";
+          compress = false;
+        }
+      std::cerr << std::endl;
+    }
+
+  // Generate output
 
   generate(out, bdf, class_name, first, last);
 

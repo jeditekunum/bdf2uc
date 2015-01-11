@@ -183,7 +183,7 @@ Glyph::rotate(rotation_t r)
 void
 Glyph::print(std::ostream& outs, const char* leading_ornament, const char* trailing_ornament)
 {
-  offset_t offset = 0; /* within glyph */
+  unsigned int bitmap_offset = 0; /* within glyph */
 
 
   if (leading_ornament)
@@ -207,15 +207,16 @@ Glyph::print(std::ostream& outs, const char* leading_ornament, const char* trail
       while (columns)
         {
           unsigned int nbits = (columns < 8) ? columns : 8;
+          Bitmap::byte_t byte = m_input_bitmap.byte(bitmap_offset);
 
           for (unsigned int bits = 0; bits < nbits; bits++, columns--)
             {
-              if ((m_bitmap->byte(m_bitmap_index + offset) >> (7-bits)) & 0x1)
+              if ((byte >> (7-bits)) & 0x1)
                 outs.put('@');
               else
                 outs.put('.');
             }
-          offset++;
+          bitmap_offset++;
         }
       outs.put('|');
       if (trailing_ornament)

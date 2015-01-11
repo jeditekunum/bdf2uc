@@ -20,7 +20,9 @@
 #ifndef GLYPHS_HH
 #define GLYPHS_HH
 
+#include <stdio.h>
 #include <iostream>
+#include <assert.h>
 
 #include "Glyph.hh"
 
@@ -29,22 +31,9 @@ class Glyphs
 public:
   typedef unsigned int index_t;
 
-  Glyphs(index_t count) :
-    m_count(count)
-  {
-    m_glyphs = new Glyph [count];
-    memset(m_glyphs, 0, sizeof(Glyph) * count);
-  }
-
   Glyphs() :
     m_count(0)
   {
-  }
-
-  ~Glyphs()
-  {
-    delete m_glyphs;
-    m_count = 0;
   }
 
   void count(index_t count)
@@ -58,6 +47,7 @@ public:
 
   Glyph& glyph(index_t index)
   {
+    assert(index < m_count);
     return (m_glyphs[index]);
   }
 

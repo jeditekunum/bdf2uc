@@ -20,6 +20,7 @@
 #ifndef BDF_HH
 #define BDF_HH
 
+#include <assert.h>
 #include <iostream>
 #include <fstream>
 
@@ -82,8 +83,6 @@ public:
   void chars(unsigned int c) { m_CHARS = c; }
   void max_glyph_width(Glyph::dimension_t d) { m_max_glyph_width = d; }
   void max_glyph_height(Glyph::dimension_t d) { m_max_glyph_height = d; }
-
-  Bitmap& bitmap() { return (m_bitmap); }
 
   Glyph::encoding_t first() { return (m_first); }
   Glyph::encoding_t last() { return (m_last); }
@@ -184,8 +183,6 @@ protected:
   int m_encodings[MAX_ENCODINGS];
 
   Glyph m_invalid_glyph;
-
-  Bitmap m_bitmap;
 };
   
 #endif

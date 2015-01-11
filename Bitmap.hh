@@ -21,6 +21,7 @@
 #define BITMAP_HH
 
 #include <string.h>
+#include <assert.h>
 
 class Bitmap
 {
@@ -28,7 +29,7 @@ public:
   typedef unsigned int  index_t;
   typedef unsigned char byte_t;
 
-  static const index_t ALLOC_SIZE = 256;
+  static const index_t ALLOC_SIZE = 16;
 
   Bitmap() :
     m_size(0),
@@ -38,7 +39,8 @@ public:
 
   ~Bitmap()
   {
-    delete m_bytes;
+    if (m_size)
+      delete m_bytes;
   }
 
   index_t count()
@@ -65,23 +67,16 @@ public:
       }
     else
       {
-        m_bytes = new byte_t [size];
-        memset(m_bytes, 0, sizeof(*m_bytes) * size);
+        m_size = size;
+        m_bytes = new byte_t [m_size];
+        memset(m_bytes, 0, sizeof(*m_bytes) * m_size);
       }
   }
 
   byte_t byte(index_t index)
   {
-    if (index <= m_count)
-      return (m_bytes[index]);
-    else
-      return (0);
-  }
-
-  void byte(index_t index, byte_t byte)
-  {
-    if (index <= m_count)
-      m_bytes[index] = byte;
+    assert(index < m_count);
+    return (m_bytes[index]);
   }
 
   void append(byte_t byte)

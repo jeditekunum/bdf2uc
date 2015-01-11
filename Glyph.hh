@@ -21,7 +21,6 @@
 #define GLYPH_HH
 
 #include <string.h>
-
 #include <iostream>
 #include <fstream>
 
@@ -64,11 +63,10 @@ public:
     m_height_valid = false;
     m_x_offset_valid = false;
     m_y_offset_valid = false;
-    m_bitmap_valid = false;
   }
 
   bool valid() { return(m_name_valid && m_encoding_valid && m_width_valid && m_height_valid &&
-                        m_x_offset_valid && m_y_offset_valid && m_bitmap_valid); }
+                        m_x_offset_valid && m_y_offset_valid); }
     
   const char* name() { return (m_name); }
   encoding_t encoding() { return (m_encoding); }
@@ -76,7 +74,14 @@ public:
   dimension_t height() { return (m_height); }
   offset_t x_offset() { return (m_x_offset); }
   offset_t y_offset() { return (m_y_offset); }
-  Bitmap::index_t bitmap_index() { return (m_bitmap_index); }
+
+  unsigned int input_count() { return (m_input_bitmap.count()); }
+  unsigned int converted_count() { return (m_converted_bitmap.count()); }
+  unsigned int compressed_count() { return (m_compressed_bitmap.count()); }
+
+  Bitmap::byte_t input_byte(Bitmap::index_t i) { return(m_input_bitmap.byte(i)); }
+  Bitmap::byte_t converted_byte(Bitmap::index_t i) { return(m_converted_bitmap.byte(i)); }
+  Bitmap::byte_t compressed_byte(Bitmap::index_t i) { return(m_compressed_bitmap.byte(i)); }
 
   void name(char* n)            { strncpy(m_name, n, GLYPH_NAME_LEN); m_name_valid = true; }
   void encoding(encoding_t e)   { m_encoding = e; m_encoding_valid = true; }
@@ -84,7 +89,10 @@ public:
   void height(dimension_t d)    { m_height = d; m_height_valid = true; }
   void x_offset(offset_t o)     { m_x_offset = o; m_x_offset_valid = true; }
   void y_offset(offset_t o)     { m_y_offset = o; m_y_offset_valid = true; }
-  void bitmap(Bitmap* bm, Bitmap::index_t i) { m_bitmap = bm; m_bitmap_index = i; m_bitmap_valid = true; }
+
+  void append_input_byte(Bitmap::byte_t byte) { m_input_bitmap.append(byte); }
+  void append_converted_byte(Bitmap::byte_t byte) { m_converted_bitmap.append(byte); }
+  void append_compressed_byte(Bitmap::byte_t byte) { m_compressed_bitmap.append(byte); }
 
 #if 0
   rotation_t rotation() { return (m_rotation); }
@@ -108,7 +116,10 @@ public:
                << " m_height=" << m_height
                << " m_x_offset=" << m_x_offset
                << " m_y_offset=" << m_y_offset
-               << " m_bitmap_index=" << m_bitmap_index << std::endl;
+               << " m_input_bitmap.count()=" << m_input_bitmap.count()
+               << " m_converted_bitmap.count()=" << m_converted_bitmap.count()
+               << " m_compressed_bitmap.count()=" << m_compressed_bitmap.count()
+               << std::endl;
       }
     else
       outs << "glyph not valid" << std::endl;
@@ -141,9 +152,10 @@ protected:
   bool m_x_offset_valid;
   offset_t m_y_offset;
   bool m_y_offset_valid;
-  Bitmap *m_bitmap;
-  Bitmap::index_t m_bitmap_index;
-  bool m_bitmap_valid;
+
+  Bitmap m_input_bitmap;
+  Bitmap m_converted_bitmap;
+  Bitmap m_compressed_bitmap;
 
 private:
 #if 0
