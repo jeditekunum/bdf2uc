@@ -235,3 +235,12 @@ Glyph::print(std::ostream& outs, const char* leading_ornament, const char* trail
   outs.put('\n');
 }
 
+void
+Glyph::finish_input()
+{
+  m_blank = false;
+  for (unsigned int i = 0; i < m_input_bitmap.count(); i++)
+    if (m_input_bitmap.byte(i) != 0)
+      return;
+  m_blank = true;
+}

@@ -238,6 +238,8 @@ Bdf::read(std::ifstream& input)
             if (glyph_count == 0)
               m_first = m_glyphs.glyph(glyph_count).encoding();
 
+            m_glyphs.glyph(glyph_count).finish_input();
+
             glyph_count++;
           }
         else if (in_bitmap)

@@ -94,6 +94,12 @@ public:
   void append_converted_byte(Bitmap::byte_t byte) { m_converted_bitmap.append(byte); }
   void append_compressed_byte(Bitmap::byte_t byte) { m_compressed_bitmap.append(byte); }
 
+  void finish_input();
+
+  bool blank() { return (m_blank); }
+  void output_offset(unsigned int offset) { m_output_offset = offset; }
+  unsigned int output_offset() { return (m_output_offset); }
+
 #if 0
   rotation_t rotation() { return (m_rotation); }
 
@@ -156,6 +162,9 @@ protected:
   Bitmap m_input_bitmap;
   Bitmap m_converted_bitmap;
   Bitmap m_compressed_bitmap;
+
+  bool m_blank;
+  unsigned int m_output_offset;
 
 private:
 #if 0

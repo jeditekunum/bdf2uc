@@ -50,6 +50,7 @@ public:
   {
     for (unsigned int i = 0; i< MAX_ENCODINGS; i++)
       m_encodings[i] = INVALID_ENCODING;
+    m_invalid_glyph.finish_input();
     m_COMMENTS = "";
   }
 
