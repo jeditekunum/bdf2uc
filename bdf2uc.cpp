@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 
 #include "Bdf.hh"
@@ -42,6 +43,59 @@ int
 percent(int l, int r)
 {
   return ((int)(((l - r) / (float)r) * 100.0));
+}
+
+void
+describe(std::ostream& out, Glyph::encoding_t i)
+{
+  if (isprint(i))
+    out << "'" << (char)i << "'    ";
+  else
+    {
+      switch (i)
+        {
+        case '\a':
+          out << "'\\a'   ";
+          break;
+        case '\b':
+          out << "'\\b'   ";
+          break;
+        case '\f':
+          out << "'\\f'   ";
+          break;
+        case '\n':
+          out << "'\\n'   ";
+          break;
+        case '\r':
+          out << "'\\r'   ";
+          break;
+        case '\t':
+          out << "'\\t'   ";
+          break;
+        case '\v':
+          out << "'\\v'   ";
+          break;
+
+        default:
+          out << "'\\";
+          if (i < 8)
+            out << "0";
+          if (i < 64)
+            out << "0";
+          out << std::oct << (int)i <<  "' " << std::dec;
+        }
+    }
+  out << "(";
+  if (i < 10)
+    out << " ";
+  if (i < 100)
+    out << " ";
+  out << i;
+  out << ", 0x";
+  if (i < 16)
+    out << "0";
+  out << std::hex << i << std::dec;
+  out << ")";
 }
 
 void
@@ -208,18 +262,7 @@ void
 output_glyph(std::ofstream& out, Bdf& bdf, Glyph::encoding_t i)
 {
   out << "/* ";
-  if (isprint(i))
-    out << "'" << (char)i << "' ";
-  else
-    {
-      out << "'\\";
-      if (i < 8)
-        out << "0";
-      if (i < 64)
-        out << "0";
-      out << std::oct << (int)i <<  "' " << std::dec;
-    }
-  out << "(" << i << ", 0x" << std::hex << i << std::dec << ")";
+  describe(out, i);
   out << " offset=" << out_offset;
   out << " length=";
   if (compress)
@@ -309,10 +352,10 @@ generate(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t first
       out << "/* glyph_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) << " */" << std::endl;
       if (compress)
         {
-          out << "/* uncompressed_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1) << " */" << std::endl;
-          out << "/* lookup_size=" << (2*(last-first+1)) << " */" << std::endl;
+          //          out << "/* uncompressed_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1) << " */" << std::endl;
+          out << "/* offsets_size=" << (2*(last-first+1)) << " */" << std::endl;
           out << "/* bitmap_size=" << total_compressed << " */" << std::endl;
-          out << "/* lookup_size+bitmap_size=" << (total_compressed + (2*(last-first+1))) << " */" << std::endl;
+          //          out << "/* offsets_size+bitmap_size=" << (total_compressed + (2*(last-first+1))) << " */" << std::endl;
           out << "/* compression saved " << -percent(total_compressed+(2*(last-first+1)), total_converted) << "% */" << std::endl;
         }
       else
@@ -322,22 +365,29 @@ generate(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t first
 
       if (compress)
         {
-          // Output lookup table
+          // Output offsets table
           unsigned int offset = 0;
 
-          out << "const uint16_t " << class_name << "::lookup[] __PROGMEM = {" << std::endl;
+          out << "const uint16_t " << class_name << "::offsets[] __PROGMEM = {" << std::endl;
 
           for (Glyph::encoding_t i = first; i <= last; i++)
             {
-              out << offset << ",";
+              out << "/* ";
+              describe(out, i);
+              out << " */ ";
+
+              out << std::setw(5) << offset << ",";
               offset += bdf.glyph(i).compressed_count();
+
+              //              if (i && !(i % 3))
+                out << std::endl;
             }
 
           out << std::endl << "};" << std::endl;
           out << std::endl;
         }
 
-      out << "const uint8_t " << class_name << "::bitmap[] __PROGMEM = {" << std::endl;
+      out << "const uint8_t " << class_name << "::compressed_bitmap[] __PROGMEM = {" << std::endl;
     }
 
   for (Glyph::encoding_t i = first; i <= last; i++)
@@ -507,19 +557,7 @@ main(int argc, char *const argv[])
   if (verbose)
     for (Glyph::encoding_t i = first; i <= last; i++)
       {
-        if (isprint(i))
-          std::cerr << "'" << (char)i << "' ";
-        else
-          {
-            std::cerr << "'\\";
-            if (i < 8)
-              std::cerr << "0";
-            if (i < 64)
-              std::cerr << "0";
-            std::cerr << std::oct << (int)i <<  "' " << std::dec;
-          }
-        std::cerr << "(" << i << ", 0x" << std::hex << i << std::dec << ") ";
-
+        describe(std::cerr, i);
         if (compress)
         {
           if (bdf.glyph(i).converted_count() < bdf.glyph(i).compressed_count())
@@ -535,23 +573,23 @@ main(int argc, char *const argv[])
 
   if (compress)
     {
-      // Compressing means we need a lookup table too
-      unsigned int lookup_size = 2*(last-first+1);
+      // Compressing means we need a offsets table too
+      unsigned int offsets_size = 2*(last-first+1);
       
       if (class_name)
         std::cerr << class_name << " ";
-      std::cerr << "overall compression (with lookup table): ";
-      if (total_converted < (total_compressed + lookup_size))
+      std::cerr << "overall compression (with offsets table): ";
+      if (total_converted < (total_compressed + offsets_size))
         {
           std::cerr << " *** GREW *** "
-                    << -percent(total_compressed + lookup_size, total_converted)
+                    << -percent(total_compressed + offsets_size, total_converted)
                     << "%, cancelling compression";
           compress = false;
         }
-      if (total_converted > (total_compressed + lookup_size))
-        std::cerr << -percent(total_compressed + lookup_size, total_converted)
+      if (total_converted > (total_compressed + offsets_size))
+        std::cerr << -percent(total_compressed + offsets_size, total_converted)
                   << "%";
-      if (total_converted == (total_compressed + lookup_size))
+      if (total_converted == (total_compressed + offsets_size))
         {
           std::cerr << "0%, cancelling compression";
           compress = false;
