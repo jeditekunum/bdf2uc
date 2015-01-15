@@ -38,11 +38,21 @@ bool compress = false;
 unsigned int total_converted = 0;
 unsigned int total_compressed = 0;
 
+#define ATMEGA2560_ESCAPE 0x21  // 3 in a row
+
 
 int
 percent(int l, int r)
 {
-  return ((int)(((l - r) / (float)r) * 100.0));
+  int result;
+  
+  if (l < r)
+    result = -((int)(((r - l) / (float)r) * 100.0));
+  else
+    result = (int)(((l - r) / (float)r) * 100.0);
+
+  //  std::cerr << "percent(" << l << "," << r << ")=" << result << std::endl;
+  return (result);
 }
 
 void
@@ -204,9 +214,13 @@ convert_glyph(Bdf& bdf, Glyph::encoding_t i)
   total_converted += bdf.glyph(i).converted_count();
 }
 
+
 void
 compress_glyph(Bdf& bdf, Glyph::encoding_t i)
 {
+  // Atmega2560 interprets 0x21 0x21 0x21 sequence as an escape
+  unsigned int hex21 = 0;
+
   if (!compress)
     return;
 
@@ -225,39 +239,73 @@ compress_glyph(Bdf& bdf, Glyph::encoding_t i)
   std::cerr << std::endl;
 #endif
 
-  unsigned int scan = 0;
+  unsigned char presentbits[BITS_TO_BYTES(bdf.glyph(i).converted_count())];
+  memset(presentbits, 0, BITS_TO_BYTES(bdf.glyph(i).converted_count()));
 
-  while (scan < bdf.glyph(i).converted_count())
+  unsigned int present = 0;
+
+  for (unsigned int j = 0; j < bdf.glyph(i).converted_count(); j++)
     {
-      if (bdf.glyph(i).converted_byte(scan) == 0)
+      if (bdf.glyph(i).converted_byte(j) != 0)
         {
-          unsigned int compressor = 0;
+          present++;
+          presentbits[j/8] |= (1 << (7-(j%8)));
+        }
+    }
 
-          while (scan < bdf.glyph(i).converted_count() &&
-                 bdf.glyph(i).converted_byte(scan) == 0 &&
-                 compressor < 256)
+  for (unsigned int j = 0; j < BITS_TO_BYTES(bdf.glyph(i).converted_count()); j++)
+    if (presentbits[j] == ATMEGA2560_ESCAPE)
+      hex21++;
+    else
+      hex21 = 0;
+
+  if (hex21 > 0 && hex21 < 3)
+    {
+      // check previous character
+      if (i != bdf.first())
+        {
+          // other than first character
+          if (bdf.glyph(i).converted_byte(0) == ATMEGA2560_ESCAPE)
             {
-              compressor++;
-              scan++;
+              // lookback at previous if initial byte is ATMEGA2560_ESCAPE
+              if (bdf.glyph(i).compressed_count() > 1 &&
+                  bdf.glyph(i).compressed_byte(1) == ATMEGA2560_ESCAPE)
+                {
+                  // our first two are ATMEGA2560_ESCAPE so only have to look back 1
+                  if (bdf.glyph(i-1).compressed_byte(bdf.glyph(i-1).compressed_count()-1) == ATMEGA2560_ESCAPE)
+                    hex21 = 3; // force escaping
+                }
+              else
+                {
+                  // look back 2
+                  if (bdf.glyph(i-1).compressed_byte(bdf.glyph(i-1).compressed_count()-1) == ATMEGA2560_ESCAPE &&
+                      bdf.glyph(i-1).compressed_byte(bdf.glyph(i-1).compressed_count()-2) == ATMEGA2560_ESCAPE)
+                    hex21 = 3; // force escaping
+                }
             }
-
-          assert(compressor);
-
-          bdf.glyph(i).append_compressed_byte(0);
-          compressor--;
-          bdf.glyph(i).append_compressed_byte(compressor);
         }
-      else
-        {
-          bdf.glyph(i).append_compressed_byte(bdf.glyph(i).converted_byte(scan));
-          scan++;
-        }
+    }
+
+  if (hex21 >= 3)
+    bdf.glyph(i).escaped_bitset(true);
+
+  for (unsigned int j = 0; j < BITS_TO_BYTES(bdf.glyph(i).converted_count()); j++)
+    {
+      if (hex21 >= 3)
+        bdf.glyph(i).append_compressed_byte(0);
+      bdf.glyph(i).append_compressed_byte(presentbits[j]);
+    }
+
+  for (unsigned int j = 0; j < bdf.glyph(i).converted_count(); j++)
+    {
+      if (bdf.glyph(i).converted_byte(j) != 0)
+              bdf.glyph(i).append_compressed_byte(bdf.glyph(i).converted_byte(j));
     }
   total_compressed += bdf.glyph(i).compressed_count();
 }
 
 // Atmega2560 interprets 0x21 0x21 0x21 sequence as an escape
-static unsigned int hex21 = 0;
+static unsigned int global_hex21 = 0;
 
 void
 output_glyph(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t i)
@@ -306,21 +354,32 @@ output_glyph(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t i
 
   unsigned int number;
   if (compress)
-    number = bdf.glyph(i).compressed_count();
+    {
+      number = bdf.glyph(i).compressed_count();
+      if (number == 0)
+        number = bdf.glyph(i).converted_count();
+    }    
   else
     number = bdf.glyph(i).converted_count();
-        
+
+  global_hex21 = 0;
+
   for (unsigned int j=0; j<number; j++)
     {
       unsigned int byte;
       if (compress)
-        byte = bdf.glyph(i).compressed_byte(j);
+        {
+          if (bdf.glyph(i).compressed_count() > 0)
+            byte = bdf.glyph(i).compressed_byte(j);
+          else
+            byte = bdf.glyph(i).converted_byte(j);
+        }
       else
         byte = bdf.glyph(i).converted_byte(j);
 
-      if (byte == 0x21) // !
+      if (byte == ATMEGA2560_ESCAPE) // !
         {
-          if (++hex21 == 3)
+          if (++global_hex21 == 3)
             {
               if (class_name)
                 std::cerr << class_name << " ";
@@ -330,7 +389,7 @@ output_glyph(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t i
             }
         }
       else
-        hex21 = 0;
+        global_hex21 = 0;
 
       out << "0x" << std::hex;
       if (byte < 16)
@@ -338,17 +397,59 @@ output_glyph(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t i
       out << byte;
       out << std::dec << ",";
 
-      if (hex21 == 3)
+      if (global_hex21 == 3)
         {
           out << std::endl;
           out << "#else" << std::endl;
           out << "0x41," << std::endl;
           out << "#endif" << std::endl;
-          hex21 = 0;
+          global_hex21 = 0;
         }
+
+      if (compress && bdf.glyph(i).compressed_count() > 0)
+        if ((bdf.glyph(i).escaped_bitset() && j == 2*BITS_TO_BYTES(bdf.glyph(i).converted_count())-1) ||
+            (!bdf.glyph(i).escaped_bitset() && j == BITS_TO_BYTES(bdf.glyph(i).converted_count())-1))
+          out << std::endl;
     }
 
+  if (compress && bdf.glyph(i).compressed_count() == BITS_TO_BYTES(bdf.glyph(i).converted_count()))
+    out << "/*blank*/";
+
   out << std::endl;
+}
+
+void
+generate_offset(std::ofstream& out, Bdf& bdf, Glyph::encoding_t en)
+{
+  unsigned short b = bdf.glyph(en).output_offset();
+  unsigned int high = b >> 8;
+  unsigned int low = b & 0xFF;
+
+  out << " ";
+  if (b < 10)
+    out << " ";
+  if (b < 100)
+    out << " ";
+  if (b < 1000)
+    out << " ";
+  if (b < 10000)
+    out << " ";
+  out << "+";
+  out << b;
+  out << " */";
+
+  if (bdf.glyph(en).escaped_bitset())
+    high |= 0x80;
+
+  out << "  0x";
+  if (high<16)
+    out << "0";
+  out << std::hex << high;
+  out << ",0x";
+  if (low<16)
+    out << "0";
+  out << std::hex << low;
+  out << std::dec;
 }
 
 void
@@ -372,7 +473,7 @@ generate(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t first
           << " first=0x" << std::hex << first << std::dec
           << " last=0x" << std::hex << last << std::dec
           << " glyph_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height()))
-          << " bitmap_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1)
+          << " bitmap_size="<< (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1)
           << " */"
           << std::endl;
 
@@ -388,24 +489,27 @@ generate(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t first
       out << "const uint8_t " << class_name << "::height = " << bdf.bb_height() << ";" << std::endl;
       out << "const uint8_t " << class_name << "::first = 0x" << std::hex << first << std:: dec << ";" << std::endl;
       out << "const uint8_t " << class_name << "::last = 0x" << std::hex << last << std::dec << ";" << std::endl;
-      if (compress)
-        out << "const uint8_t " << class_name << "::compression_type = "
-            << compress << ";" << std::endl;
+      out << "const uint8_t " << class_name << "::compression_type = "
+          << compress << ";" << std::endl;
       out << std::endl;
 
       out << "/* glyph_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) << " */" << std::endl;
       if (compress)
-        {
-          //          out << "/* uncompressed_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1) << " */" << std::endl;
-          out << "/* offsets_size=" << (2*(last-first+1)) << " */" << std::endl;
-          out << "/* bitmap_size=" << total_compressed << " */" << std::endl;
-          //          out << "/* offsets_size+bitmap_size=" << (total_compressed + (2*(last-first+1))) << " */" << std::endl;
-          out << "/* compression saved " << -percent(total_compressed+(2*(last-first+1)), total_converted) << "% */" << std::endl;
-        }
+        out << "/* uncompressed_size=" << (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1) << " */" << std::endl;
+      out << "/* bitmap_size=";
+      if (compress)
+        out << total_compressed+(2*(last-first+1));
       else
-        out << "/* bitmap_size=" << total_converted << " */" << std::endl;
+        out << total_converted;
+      out << " */" << std::endl;
 
+      if (compress)
+        out << "/* compression saved " << -percent(total_compressed+(2*(last-first+1)), (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1)) << "% */" << std::endl;
+      
       out << std::endl;
+
+      if (class_name)
+        out << "const uint8_t " << class_name << "::bitmap[] __PROGMEM = {" << std::endl;
 
       if (compress)
         {
@@ -414,22 +518,20 @@ generate(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t first
           Glyph::encoding_t blank_en;
 
           // Output offsets table
-          unsigned int offset = 0;
-
-          out << "const uint16_t " << class_name << "::offsets[] __PROGMEM = {" << std::endl;
+          unsigned int offset = 2*(last-first+1);
 
           for (Glyph::encoding_t i = first; i <= last; i++)
             {
               out << "/* ";
               describe(out, i);
-              out << " */ ";
 
               if (bdf.glyph(i).blank())
                 {
                   if (seen_blank)
                     {
                       // duplicate
-                      out << std::setw(5) << bdf.glyph(blank_en).output_offset() << ",";
+                      generate_offset(out, bdf, blank_en);
+                      out << ",";
                       out << " /*blank*/";
                     }
                   else
@@ -439,30 +541,30 @@ generate(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t first
                       blank_en = i;
 
                       bdf.glyph(i).output_offset(offset);
-                      out << std::setw(5) << offset << ",";
-                      offset += bdf.glyph(i).compressed_count();
-
+                      generate_offset(out, bdf, i);
+                      if (bdf.glyph(i).compressed_count() > 0)
+                        offset += bdf.glyph(i).compressed_count();
+                      else
+                        offset += bdf.glyph(i).converted_count();
+                      out << ",";
                       out << " /*first blank*/";
                     }
                 }
               else
                 {
                   bdf.glyph(i).output_offset(offset);
-                  out << std::setw(5) << offset << ",";
-                  offset += bdf.glyph(i).compressed_count();
+                  generate_offset(out, bdf, i);
+                  if (bdf.glyph(i).compressed_count() > 0)
+                    offset += bdf.glyph(i).compressed_count();
+                  else
+                    offset += bdf.glyph(i).converted_count();
+                  out << ",";
                 }
 
               out << std::endl;
             }
-
-          out << "};" << std::endl;
           out << std::endl;
         }
-
-      if (compress)
-        out << "const uint8_t " << class_name << "::compressed_bitmap[] __PROGMEM = {" << std::endl;
-      else
-        out << "const uint8_t " << class_name << "::bitmap[] __PROGMEM = {" << std::endl;
     }
 
   for (Glyph::encoding_t i = first; i <= last; i++)
@@ -657,7 +759,7 @@ main(int argc, char *const argv[])
       if (total_converted < (total_compressed + offsets_size))
         {
           std::cerr << " *** GREW *** "
-                    << -percent(total_compressed + offsets_size, total_converted)
+                    << percent(total_compressed + offsets_size, total_converted)
                     << "%, cancelling compression";
           compress = false;
         }

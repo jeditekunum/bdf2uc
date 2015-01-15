@@ -97,6 +97,10 @@ public:
   void finish_input();
 
   bool blank() { return (m_blank); }
+
+  void escaped_bitset(bool b) { m_escaped_bitset = b; }
+  bool escaped_bitset() { return (m_escaped_bitset); }
+
   void output_offset(unsigned int offset) { m_output_offset = offset; }
   unsigned int output_offset() { return (m_output_offset); }
 
@@ -164,6 +168,7 @@ protected:
   Bitmap m_compressed_bitmap;
 
   bool m_blank;
+  bool m_escaped_bitset;
   unsigned int m_output_offset;
 
 private:
