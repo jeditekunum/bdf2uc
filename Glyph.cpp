@@ -3,18 +3,18 @@
  * @version 1.0
  *
  * @section License
- * Copyright (C) 2014, jediunix
+ * Copyright (C) 2014-2015, jeditekunum
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  */
 
 #include "Glyph.hh"
@@ -200,7 +200,7 @@ Glyph::print(std::ostream& outs, const char* leading_ornament, const char* trail
   for (dimension_t r = 0; r < m_height; r++)
     {
       dimension_t columns = m_width;
-    
+
       if (leading_ornament)
         outs << leading_ornament;
       outs.put('|');
@@ -223,7 +223,7 @@ Glyph::print(std::ostream& outs, const char* leading_ornament, const char* trail
         outs << trailing_ornament;
       outs.put('\n');
     }
-  
+
   if (leading_ornament)
     outs << leading_ornament;
   outs.put('+');

@@ -1,25 +1,25 @@
 /**
  * @file bdf2uc.cpp
- * @version 1.2
+ * @version 1.3
  *
  * @section License
- * Copyright (C) 2014, jediunix
+ * Copyright (C) 2014-2015, jeditekunum
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  */
 
 #define VERSION "1.3"
-#define AUTHOR "jediunix"
-#define SOURCE "https://github.com/jediunix/bdf2uc"
+#define AUTHOR "jeditekunum"
+#define SOURCE "https://github.com/jeditekunum/bdf2uc"
 
 #include <unistd.h>
 #include <stdlib.h>
@@ -45,7 +45,7 @@ int
 percent(int l, int r)
 {
   int result;
-  
+
   if (l < r)
     result = -((int)(((r - l) / (float)r) * 100.0));
   else
@@ -112,7 +112,7 @@ void
 output_hdr(std::ofstream& out, Bdf& bdf)
 {
   out << "/* BDF " << std::endl;
-  
+
 #if 0
   out << bdf.comments();
 #endif
@@ -190,7 +190,7 @@ convert_glyph(Bdf& bdf, Glyph::encoding_t i)
                   unsigned short right_shift = 7 - x % 8;
                   //                  out << " rs=" << right_shift;
 
-                  
+
                   Bitmap::byte_t data = bdf.glyph(i).input_byte(in_offset);
                   //                  out << " data=0x" << std::hex << (uint16_t)data << std::dec
                   //                      << " (0b" << (std::bitset<8>)data << ")";
@@ -358,7 +358,7 @@ output_glyph(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t i
       number = bdf.glyph(i).compressed_count();
       if (number == 0)
         number = bdf.glyph(i).converted_count();
-    }    
+    }
   else
     number = bdf.glyph(i).converted_count();
 
@@ -505,7 +505,7 @@ generate(std::ofstream& out, Bdf& bdf, char* class_name, Glyph::encoding_t first
 
       if (compress)
         out << "/* compression saved " << -percent(total_compressed+(2*(last-first+1)), (bdf.bb_width() * BITS_TO_BYTES(bdf.bb_height())) * (last-first+1)) << "% */" << std::endl;
-      
+
       out << std::endl;
 
       if (class_name)
@@ -728,7 +728,7 @@ main(int argc, char *const argv[])
   if (compress)
     for (Glyph::encoding_t i = first; i <= last; i++)
       compress_glyph(bdf, i);
- 
+
   // Verbose reporting
 
   if (verbose)
@@ -752,7 +752,7 @@ main(int argc, char *const argv[])
     {
       // Compressing means we need a offsets table too
       unsigned int offsets_size = 2*(last-first+1);
-      
+
       if (class_name)
         std::cerr << class_name << " ";
       std::cerr << "overall compression: ";
